@@ -1,12 +1,13 @@
 [project]
-name = "github-pr-fetcher"
+name = "github-pr-exporter"
 version = "1.0.0"
-description = "Fetch GitHub PRs and export to HTML or PDF"
+description = "Export your GitHub pull requests to HTML or PDF"
 readme = "README.md"
-requires-python = ">=3.7"
+requires-python = ">=3.8"
 dependencies = [
     "requests>=2.31.0",
     "fpdf2>=2.7.9",
+    "streamlit>=1.28.0",
 ]
 
 [project.scripts]

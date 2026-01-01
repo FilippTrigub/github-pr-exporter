@@ -1,10 +1,28 @@
-# GitHub PR Fetcher and Exporter
+# GitHub PR Exporter
 
-A Python script that fetches all pull requests authored by you from a specific GitHub repository and exports them to a clean, formatted HTML file (or PDF if desired).
+Export your GitHub pull requests to HTML or PDF with a simple web interface or command line tool.
 
 ## Quick Start
 
-1. **Install with uv:**
+### Web App (Recommended)
+
+1. **Install dependencies:**
+   ```bash
+   uv sync
+   ```
+
+2. **Run the Streamlit app:**
+   ```bash
+   uv run streamlit run app.py
+   ```
+
+3. **Open your browser** to the URL shown (usually http://localhost:8501)
+
+4. **Fill in the form** with your repository details and export!
+
+### Command Line
+
+1. **Install dependencies:**
    ```bash
    uv sync
    ```
