@@ -1,7 +1,13 @@
 [project]
-name = "invoice-creator"
-version = "0.1.0"
-description = "Add your description here"
+name = "github-pr-fetcher"
+version = "1.0.0"
+description = "Fetch GitHub PRs and export to HTML or PDF"
 readme = "README.md"
-requires-python = ">=3.13"
-dependencies = []
+requires-python = ">=3.7"
+dependencies = [
+    "requests>=2.31.0",
+    "fpdf2>=2.7.9",
+]
+
+[project.scripts]
+fetch-prs = "fetch_github_prs:main"

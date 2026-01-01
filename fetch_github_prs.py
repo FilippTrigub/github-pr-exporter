@@ -324,34 +324,38 @@ class PDFExporter(FPDF):
             self.set_fill_color(108, 117, 125)  # Gray for closed
             self.set_text_color(255, 255, 255)
 
-        # Draw status badge with colored background
-        # Using a cell that spans partial width but moves to new line
-        self.cell(30, 6, status, 0, 0, 'C', True)
-        # Force new line after status badge
-        self.ln()
+        # Draw status badge - text only, no background box
+        # Reset to ensure we're at left margin
+        self.set_x(self.l_margin)
+        status_text = f"[{status}]"
+        self.multi_cell(0, 6, status_text, 0, 'L')
         self.set_text_color(0, 0, 0)
         self.set_fill_color(255, 255, 255)
 
-        # PR Number and Title - using multi_cell for wrapping
+        # PR Number and Title - ensure at left margin
+        self.set_x(self.l_margin)
         self.set_font('Arial', 'B', 10)
         title_text = f"#{pr['number']} - {sanitize_text(pr['title'])}"
         self.multi_cell(0, 5, title_text, 0, 'L')
 
-        # Date - ensure we're at left margin
+        # Date - ensure at left margin
+        self.set_x(self.l_margin)
         self.set_font('Arial', '', 8)
         date = pr['merged_at'] if pr['merged'] else pr['created_at']
         self.set_text_color(100, 100, 100)
         self.multi_cell(0, 4, date, 0, 'L')
         self.set_text_color(0, 0, 0)
 
-        # URL - ensure we're at left margin
+        # URL - ensure at left margin
+        self.set_x(self.l_margin)
         self.set_font('Arial', '', 7)
         self.set_text_color(0, 0, 255)
         self.multi_cell(0, 4, sanitize_text(pr['url']), 0, 'L')
         self.set_text_color(0, 0, 0)
 
-        # Description
+        # Description - ensure at left margin
         self.ln(1)
+        self.set_x(self.l_margin)
         self.set_font('Arial', '', 8)
         description = sanitize_text(pr['description'][:500])
         if description:
