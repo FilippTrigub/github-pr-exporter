@@ -210,11 +210,14 @@ with tab1:
                             with tempfile.NamedTemporaryFile(delete=False, suffix=f".{output_format.lower()}") as tmp:
                                 repo_names = ", ".join(repos) if len(repos) <= 3 else f"{len(repos)} repositories"
 
+                                # Get customization settings from session state
+                                custom_settings = st.session_state.get('customization', {})
+
                                 if output_format == "HTML":
-                                    export_to_html(all_prs, tmp.name, repo_names, username)
+                                    export_to_html(all_prs, tmp.name, repo_names, username, custom_settings)
                                     mime_type = "text/html"
                                 else:
-                                    export_to_pdf(all_prs, tmp.name, repo_names, username)
+                                    export_to_pdf(all_prs, tmp.name, repo_names, username, custom_settings)
                                     mime_type = "application/pdf"
 
                                 # Read file for download

@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.8"
 dependencies = [
     "requests>=2.31.0",
-    "fpdf2>=2.7.9",
+    "weasyprint>=60.0",
     "streamlit>=1.28.0",
 ]
 

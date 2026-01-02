@@ -12,7 +12,8 @@ import argparse
 import unicodedata
 import re
 import calendar
-from fpdf import FPDF
+from weasyprint import HTML
+import tempfile
 
 
 def sanitize_text(text: str) -> str:
@@ -383,120 +384,7 @@ class GitHubPRFetcher:
         return formatted_prs
 
 
-class PDFExporter(FPDF):
-    """Custom PDF class for exporting PR data."""
-
-    def __init__(self, repo_name: str, author: str):
-        super().__init__()
-        self.repo_name = repo_name
-        self.author = author
-
-    def header(self):
-        """Add header to each page."""
-        self.set_font('Arial', 'B', 12)
-        self.cell(0, 8, sanitize_text(f'Pull Requests by {self.author}'), 0, 1, 'C')
-        self.set_font('Arial', 'I', 8)
-        self.cell(0, 5, sanitize_text(f'Repository: {self.repo_name}'), 0, 1, 'C')
-        self.ln(4)
-
-    def footer(self):
-        """Add footer to each page."""
-        self.set_y(-15)
-        self.set_font('Arial', 'I', 8)
-        self.cell(0, 10, f'Page {self.page_no()}', 0, 0, 'C')
-
-    def add_pr(self, pr: Dict):
-        """
-        Add a PR to the PDF.
-
-        Args:
-            pr: Formatted PR dictionary
-        """
-        # Status Badge (Prominent) - Left side only
-        status = "MERGED" if pr['merged'] else pr['state'].upper()
-        self.set_font('Arial', 'B', 9)
-
-        # Set status badge colors
-        if pr['merged']:
-            self.set_fill_color(34, 139, 34)  # Green for merged
-            self.set_text_color(255, 255, 255)
-        elif pr['state'] == 'open':
-            self.set_fill_color(40, 167, 69)  # Lighter green for open
-            self.set_text_color(255, 255, 255)
-        else:
-            self.set_fill_color(108, 117, 125)  # Gray for closed
-            self.set_text_color(255, 255, 255)
-
-        # Draw status badge - text only, no background box
-        # Reset to ensure we're at left margin
-        self.set_x(self.l_margin)
-        status_text = f"[{status}]"
-        self.multi_cell(0, 6, status_text, 0, 'L')
-        self.set_text_color(0, 0, 0)
-        self.set_fill_color(255, 255, 255)
-
-        # PR Type (Authored/Reviewed) - ensure at left margin
-        if 'pr_type' in pr and pr['pr_type']:
-            self.set_x(self.l_margin)
-            self.set_font('Arial', 'I', 7)
-            self.set_text_color(100, 100, 100)
-            self.multi_cell(0, 4, f"[{pr['pr_type']}]", 0, 'L')
-            self.set_text_color(0, 0, 0)
-
-        # PR Number and Title - ensure at left margin
-        self.set_x(self.l_margin)
-        self.set_font('Arial', 'B', 10)
-        title_text = f"#{pr['number']} - {sanitize_text(pr['title'])}"
-        self.multi_cell(0, 5, title_text, 0, 'L')
-
-        # Date - ensure at left margin
-        self.set_x(self.l_margin)
-        self.set_font('Arial', '', 8)
-        date = pr['merged_at'] if pr['merged'] else pr['created_at']
-        self.set_text_color(100, 100, 100)
-        self.multi_cell(0, 4, date, 0, 'L')
-        self.set_text_color(0, 0, 0)
-
-        # Repository - ensure at left margin
-        if 'repo' in pr and pr['repo']:
-            self.set_x(self.l_margin)
-            self.set_font('Arial', '', 7)
-            self.set_text_color(100, 100, 100)
-            self.multi_cell(0, 4, f"Repository: {sanitize_text(pr['repo'])}", 0, 'L')
-            self.set_text_color(0, 0, 0)
-
-        # Statistics - ensure at left margin
-        if pr.get('commits', 0) > 0 or pr.get('additions', 0) > 0:
-            self.set_x(self.l_margin)
-            self.set_font('Arial', '', 7)
-            self.set_text_color(100, 100, 100)
-            stats_text = f"Commits: {pr.get('commits', 0)} | +{pr.get('additions', 0)} -{pr.get('deletions', 0)} lines"
-            self.multi_cell(0, 4, stats_text, 0, 'L')
-            self.set_text_color(0, 0, 0)
-
-        # URL - ensure at left margin
-        self.set_x(self.l_margin)
-        self.set_font('Arial', '', 7)
-        self.set_text_color(0, 0, 255)
-        self.multi_cell(0, 4, sanitize_text(pr['url']), 0, 'L')
-        self.set_text_color(0, 0, 0)
-
-        # Description - ensure at left margin
-        self.ln(1)
-        self.set_x(self.l_margin)
-        self.set_font('Arial', '', 8)
-        description = sanitize_text(pr['description'][:500])
-        if description:
-            self.multi_cell(0, 4, description, 0, 'L')
-
-        # Separator
-        self.ln(2)
-        self.set_draw_color(220, 220, 220)
-        self.line(10, self.get_y(), 200, self.get_y())
-        self.ln(4)
-
-
-def export_to_html(prs: List[Dict], filename: str, repo_name: str, author: str):
+def export_to_html(prs: List[Dict], filename: str, repo_name: str, author: str, customization: Dict = None):
     """
     Export PRs to HTML.
 
@@ -505,13 +393,49 @@ def export_to_html(prs: List[Dict], filename: str, repo_name: str, author: str):
         filename: Output HTML filename
         repo_name: Repository name for the header
         author: Author name for the header
+        customization: Optional customization settings dict
     """
+    # Default customization values
+    if customization is None:
+        customization = {}
+
+    show_description = customization.get('show_description', True)
+    show_repo_name = customization.get('show_repo_name', True)
+    max_description_length = customization.get('max_description_length', 500)
+    sort_by = customization.get('sort_by', 'Date (newest first)')
+    filter_status = customization.get('filter_status', ['MERGED', 'OPEN', 'CLOSED'])
+    primary_color = customization.get('primary_color', '#228b22')
+    bg_color = customization.get('bg_color', '#f5f5f5')
+    text_color = customization.get('text_color', '#333333')
+    font_family = customization.get('font_family', 'Arial, sans-serif')
+    custom_title = customization.get('custom_title', '')
+
+    # Apply sorting
+    if sort_by == 'Date (oldest first)':
+        prs = sorted(prs, key=lambda x: x.get('merged_at') or x.get('created_at'))
+    elif sort_by == 'PR Number':
+        prs = sorted(prs, key=lambda x: x['number'])
+    elif sort_by == 'Status':
+        prs = sorted(prs, key=lambda x: (0 if x['merged'] else (1 if x['state'] == 'open' else 2)))
+    else:  # Date (newest first) - default
+        prs = sorted(prs, key=lambda x: x.get('merged_at') or x.get('created_at'), reverse=True)
+
+    # Apply status filtering
+    filtered_prs = []
+    for pr in prs:
+        status = "MERGED" if pr['merged'] else pr['state'].upper()
+        if status in filter_status:
+            filtered_prs.append(pr)
+    prs = filtered_prs
+
+    # Use custom title if provided
+    title_text = custom_title if custom_title else f"Pull Requests by {sanitize_text(author)}"
     html_content = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pull Requests by {sanitize_text(author)}</title>
+    <title>{title_text}</title>
     <style>
         * {{
             margin: 0;
@@ -519,10 +443,10 @@ def export_to_html(prs: List[Dict], filename: str, repo_name: str, author: str):
             box-sizing: border-box;
         }}
         body {{
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            font-family: {font_family};
             line-height: 1.6;
-            color: #333;
-            background: #f5f5f5;
+            color: {text_color};
+            background: {bg_color};
             padding: 20px;
         }}
         .container {{
@@ -541,7 +465,7 @@ def export_to_html(prs: List[Dict], filename: str, repo_name: str, author: str):
         }}
         .header h1 {{
             font-size: 24px;
-            color: #333;
+            color: {text_color};
             margin-bottom: 8px;
         }}
         .header .repo {{
@@ -575,7 +499,7 @@ def export_to_html(prs: List[Dict], filename: str, repo_name: str, author: str):
             text-transform: uppercase;
         }}
         .status-merged {{
-            background-color: #228b22;
+            background-color: {primary_color};
         }}
         .status-open {{
             background-color: #28a745;
@@ -586,7 +510,7 @@ def export_to_html(prs: List[Dict], filename: str, repo_name: str, author: str):
         .pr-title {{
             font-size: 16px;
             font-weight: 600;
-            color: #333;
+            color: {text_color};
             margin-bottom: 6px;
             line-height: 1.4;
         }}
@@ -600,7 +524,7 @@ def export_to_html(prs: List[Dict], filename: str, repo_name: str, author: str):
             margin-bottom: 10px;
         }}
         .pr-url a {{
-            color: #0366d6;
+            color: {primary_color};
             text-decoration: none;
         }}
         .pr-url a:hover {{
@@ -655,7 +579,7 @@ def export_to_html(prs: List[Dict], filename: str, repo_name: str, author: str):
         .stat-value {{
             font-size: 20px;
             font-weight: 600;
-            color: #333;
+            color: {text_color};
         }}
         .footer {{
             text-align: center;
@@ -670,7 +594,7 @@ def export_to_html(prs: List[Dict], filename: str, repo_name: str, author: str):
 <body>
     <div class="container">
         <div class="header">
-            <h1>Pull Requests by {sanitize_text(author)}</h1>
+            <h1>{title_text}</h1>
             <div class="repo">Repository: {sanitize_text(repo_name)}</div>
         </div>
 
@@ -700,10 +624,14 @@ def export_to_html(prs: List[Dict], filename: str, repo_name: str, author: str):
         date = pr['merged_at'] if pr['merged'] else pr['created_at']
 
         pr_type_html = f'<div class="pr-type">{pr.get("pr_type", "Unknown")}</div>' if pr.get('pr_type') else ''
-        repo_html = f'<div class="pr-repo">Repository: {sanitize_text(pr.get("repo", "Unknown"))}</div>' if pr.get('repo') else ''
+        repo_html = f'<div class="pr-repo">Repository: {sanitize_text(pr.get("repo", "Unknown"))}</div>' if (show_repo_name and pr.get('repo')) else ''
         stats_html = ''
         if pr.get('commits', 0) > 0 or pr.get('additions', 0) > 0:
             stats_html = f'<div class="pr-stats">Commits: {pr.get("commits", 0)} | +{pr.get("additions", 0)} -{pr.get("deletions", 0)} lines</div>'
+
+        description_html = ''
+        if show_description:
+            description_html = f'<div class="pr-description">{sanitize_text(pr["description"][:max_description_length])}</div>'
 
         html_content += f"""
         <div class="pr-item">
@@ -714,7 +642,7 @@ def export_to_html(prs: List[Dict], filename: str, repo_name: str, author: str):
             {repo_html}
             {stats_html}
             <div class="pr-url"><a href="{pr['url']}" target="_blank">{pr['url']}</a></div>
-            <div class="pr-description">{sanitize_text(pr['description'][:500])}</div>
+            {description_html}
         </div>
 """
 
@@ -733,34 +661,30 @@ def export_to_html(prs: List[Dict], filename: str, repo_name: str, author: str):
     print(f"HTML exported successfully: {filename}")
 
 
-def export_to_pdf(prs: List[Dict], filename: str, repo_name: str, author: str):
+def export_to_pdf(prs: List[Dict], filename: str, repo_name: str, author: str, customization: Dict = None):
     """
-    Export PRs to PDF.
+    Export PRs to PDF using WeasyPrint.
 
     Args:
         prs: List of formatted PR dictionaries
         filename: Output PDF filename
         repo_name: Repository name for the header
         author: Author name for the header
+        customization: Optional customization settings dict
     """
-    pdf = PDFExporter(repo_name, author)
-    pdf.add_page()
+    # Generate HTML first
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False, encoding='utf-8') as tmp_html:
+        export_to_html(prs, tmp_html.name, repo_name, author, customization)
+        html_file = tmp_html.name
 
-    # Add summary
-    pdf.set_font('Arial', 'B', 9)
-    pdf.cell(0, 6, f'Total PRs: {len(prs)}', 0, 1)
-    pdf.ln(2)
-
-    # Add each PR
-    for pr in prs:
-        # Check if we need a new page
-        if pdf.get_y() > 250:
-            pdf.add_page()
-
-        pdf.add_pr(pr)
-
-    pdf.output(filename)
-    print(f"PDF exported successfully: {filename}")
+    try:
+        # Convert HTML to PDF using WeasyPrint
+        HTML(filename=html_file).write_pdf(filename)
+        print(f"PDF exported successfully: {filename}")
+    finally:
+        # Clean up temp HTML file
+        import os
+        os.unlink(html_file)
 
 
 def main():
