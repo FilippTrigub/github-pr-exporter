@@ -251,7 +251,7 @@ class GitHubPRFetcher:
 
     def fetch_reviewed_prs(self, owner: str, repo: str, reviewer: str) -> List[Dict]:
         """
-        Fetch all PRs reviewed by a specific user.
+        Fetch all PRs reviewed by a specific user using GitHub Search API.
 
         Args:
             owner: Repository owner (username or organization)
@@ -266,40 +266,43 @@ class GitHubPRFetcher:
         per_page = 100
 
         while True:
-            # Fetch PRs with pagination
-            url = f"{self.base_url}/repos/{owner}/{repo}/pulls"
+            # Use Search API - much faster than checking each PR individually
+            url = f"{self.base_url}/search/issues"
+            query = f"type:pr repo:{owner}/{repo} reviewed-by:{reviewer}"
             params = {
-                "state": "all",
+                "q": query,
                 "per_page": per_page,
                 "page": page,
                 "sort": "created",
-                "direction": "desc"
+                "order": "desc"
             }
 
             response = requests.get(url, headers=self.headers, params=params)
 
             if response.status_code != 200:
-                raise Exception(f"GitHub API error: {response.status_code} - {response.text}")
-
-            prs = response.json()
-
-            if not prs:
+                # If search fails, fall back to empty list rather than crashing
+                print(f"Warning: Search API error {response.status_code}, no reviewed PRs fetched")
                 break
 
-            # Check each PR for reviews by the user
-            for pr in prs:
-                reviews_url = f"{self.base_url}/repos/{owner}/{repo}/pulls/{pr['number']}/reviews"
-                reviews_response = requests.get(reviews_url, headers=self.headers)
+            data = response.json()
+            items = data.get("items", [])
 
-                if reviews_response.status_code == 200:
-                    reviews = reviews_response.json()
-                    # Check if user has reviewed this PR
-                    if any(review["user"]["login"] == reviewer for review in reviews):
-                        all_prs.append(pr)
+            if not items:
+                break
+
+            # Convert search results to PR format by fetching full PR data
+            for item in items:
+                # Search API returns issues format, need to get full PR data
+                pr_url = item["pull_request"]["url"]
+                pr_response = requests.get(pr_url, headers=self.headers)
+
+                if pr_response.status_code == 200:
+                    all_prs.append(pr_response.json())
 
             page += 1
 
-            if len(prs) < per_page:
+            # Check if there are more results
+            if len(items) < per_page:
                 break
 
         return all_prs
@@ -341,9 +344,9 @@ class GitHubPRFetcher:
 
         Args:
             prs: List of raw PR data from GitHub API
-            owner: Repository owner (required if include_stats is True)
-            repo: Repository name (required if include_stats is True)
-            include_stats: Whether to fetch detailed stats for each PR
+            owner: Repository owner (for display purposes)
+            repo: Repository name (for display purposes)
+            include_stats: Whether to include stats (stats are already in PR data)
 
         Returns:
             List of formatted PR dictionaries
@@ -367,10 +370,15 @@ class GitHubPRFetcher:
                 "repo": f"{owner}/{repo}" if owner and repo else "Unknown"
             }
 
-            # Add detailed stats if requested
-            if include_stats and owner and repo:
-                details = self.get_pr_details(owner, repo, pr["number"])
-                formatted_pr.update(details)
+            # Stats are already included in the PR data from the API!
+            # No need for additional API calls
+            if include_stats:
+                formatted_pr.update({
+                    "commits": pr.get("commits", 0),
+                    "additions": pr.get("additions", 0),
+                    "deletions": pr.get("deletions", 0),
+                    "changed_files": pr.get("changed_files", 0)
+                })
             else:
                 formatted_pr.update({
                     "commits": 0,
