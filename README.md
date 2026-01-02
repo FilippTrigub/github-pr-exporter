@@ -30,34 +30,52 @@ Export your GitHub pull requests to HTML or PDF with a simple web interface or c
 2. **Generate HTML (default):**
    ```bash
    uv run python fetch_github_prs.py \
-     --owner REPO_OWNER \
-     --repo REPO_NAME \
-     --author YOUR_USERNAME
+     --repos OWNER/REPO \
+     --username YOUR_USERNAME
    ```
 
 3. **Generate PDF:**
    ```bash
    uv run python fetch_github_prs.py \
-     --owner REPO_OWNER \
-     --repo REPO_NAME \
-     --author YOUR_USERNAME \
+     --repos OWNER/REPO \
+     --username YOUR_USERNAME \
      --pdf
+   ```
+
+4. **Multiple repositories:**
+   ```bash
+   uv run python fetch_github_prs.py \
+     --repos "owner1/repo1,owner2/repo2" \
+     --username YOUR_USERNAME
    ```
 
 ## Features
 
+- **Dual interface**: Web app (Streamlit) and command-line tool
 - Fetches all PRs (open, closed, and merged) from any GitHub repository
-- Filters PRs by author
+- **Authored AND Reviewed PRs** - see both types of contributions
+- **Multi-repository support** - analyze PRs across multiple repos
+- **Detailed statistics** - commits, lines changed, files modified
 - **Date filtering** with flexible formats (specific dates, months, or "last-month")
 - Handles pagination automatically to fetch all PRs
 - **HTML output by default** - clean, modern, single-column layout
-- **Optional PDF export** with `--pdf` flag
+- **PDF export** via WeasyPrint - same styling as HTML
+- **Full customization**:
+  - Colors (primary, background, text)
+  - Font family
+  - Custom report titles
+  - Toggle descriptions and repo names
+  - Sorting (by date, PR number, status)
+  - Status filtering (MERGED/OPEN/CLOSED)
 - Professionally formatted output with:
   - PR number and title
   - Prominent status badge (MERGED, OPEN, CLOSED)
+  - PR type badge (Authored/Reviewed)
+  - Repository name
   - Creation/merge date
   - Direct clickable links to PRs
   - PR description (Unicode-safe)
+  - Statistics (commits, lines changed)
 - Color-coded status indicators (green for merged, lighter green for open, gray for closed)
 - Clean single-column layout - no tables, just pure vertical flow
 - Responsive design (HTML) that works on all devices
@@ -68,40 +86,54 @@ Export your GitHub pull requests to HTML or PDF with a simple web interface or c
 ### Last Month's PRs (HTML)
 ```bash
 uv run python fetch_github_prs.py \
-  --owner microsoft \
-  --repo vscode \
-  --author yourusername \
+  --repos microsoft/vscode \
+  --username yourusername \
   --last-month
 ```
 
 ### Specific Month as PDF (December 2024)
 ```bash
 uv run python fetch_github_prs.py \
-  --owner facebook \
-  --repo react \
-  --author yourusername \
+  --repos facebook/react \
+  --username yourusername \
   --start-date 12 \
   --end-date 12 \
   --pdf
 ```
 
-### Custom Date Range
+### Multiple Repos with Statistics
 ```bash
 uv run python fetch_github_prs.py \
-  --owner google \
-  --repo angular \
-  --author yourusername \
-  --start-date 01.11.2024 \
-  --end-date 30.11.2024 \
-  --output november_prs.html
+  --repos "owner1/repo1,owner2/repo2" \
+  --username yourusername \
+  --include-stats \
+  --pdf
+```
+
+### Only Authored PRs (exclude reviewed)
+```bash
+uv run python fetch_github_prs.py \
+  --repos owner/repo \
+  --username yourusername \
+  --authored-only
+```
+
+### Custom Styling
+```bash
+uv run python fetch_github_prs.py \
+  --repos owner/repo \
+  --username yourusername \
+  --primary-color "#ff0000" \
+  --bg-color "#ffffff" \
+  --text-color "#000000" \
+  --custom-title "My PR Report"
 ```
 
 ### With GitHub Token (Recommended for private repos)
 ```bash
 uv run python fetch_github_prs.py \
-  --owner owner \
-  --repo repo \
-  --author yourusername \
+  --repos owner/repo \
+  --username yourusername \
   --token ghp_yourtoken \
   --pdf
 ```
@@ -125,35 +157,51 @@ That's it! uv will handle Python version and all dependencies automatically.
 ### Basic Usage (HTML output)
 
 ```bash
-uv run python fetch_github_prs.py --owner REPO_OWNER --repo REPO_NAME --author YOUR_USERNAME
+uv run python fetch_github_prs.py --repos OWNER/REPO --username YOUR_USERNAME
 ```
 
-This creates `github_prs.html` by default.
+This creates `github_prs.html` by default with both authored AND reviewed PRs.
 
 ### With PDF Export
 
 ```bash
-uv run python fetch_github_prs.py --owner REPO_OWNER --repo REPO_NAME --author YOUR_USERNAME --pdf
+uv run python fetch_github_prs.py --repos OWNER/REPO --username YOUR_USERNAME --pdf
 ```
 
 This creates `github_prs.pdf` instead.
+
+### Multiple Repositories
+
+```bash
+uv run python fetch_github_prs.py --repos "owner1/repo1,owner2/repo2,owner3/repo3" --username YOUR_USERNAME
+```
+
+Analyze PRs across multiple repositories at once.
+
+### With Statistics
+
+```bash
+uv run python fetch_github_prs.py --repos OWNER/REPO --username YOUR_USERNAME --include-stats
+```
+
+Includes commits, lines changed, and files modified for each PR.
 
 ### With GitHub Token (Recommended)
 
 Using a GitHub token prevents rate limiting and allows access to private repositories:
 
 ```bash
-uv run python fetch_github_prs.py --owner REPO_OWNER --repo REPO_NAME --author YOUR_USERNAME --token YOUR_GITHUB_TOKEN
+uv run python fetch_github_prs.py --repos OWNER/REPO --username YOUR_USERNAME --token YOUR_GITHUB_TOKEN
 ```
 
 ### Custom Output Filename
 
 ```bash
 # HTML output with custom name
-uv run python fetch_github_prs.py --owner REPO_OWNER --repo REPO_NAME --author YOUR_USERNAME --output my_prs.html
+uv run python fetch_github_prs.py --repos OWNER/REPO --username YOUR_USERNAME --output my_prs.html
 
 # PDF output with custom name
-uv run python fetch_github_prs.py --owner REPO_OWNER --repo REPO_NAME --author YOUR_USERNAME --pdf --output my_prs.pdf
+uv run python fetch_github_prs.py --repos OWNER/REPO --username YOUR_USERNAME --pdf --output my_prs.pdf
 ```
 
 ### With Date Filtering
@@ -162,34 +210,89 @@ Filter PRs by date range using flexible date formats:
 
 ```bash
 # Filter PRs from last month (simple flag)
-uv run python fetch_github_prs.py --owner OWNER --repo REPO --author USERNAME --last-month
+uv run python fetch_github_prs.py --repos OWNER/REPO --username USERNAME --last-month
 
 # Filter PRs from December 2024 only
-uv run python fetch_github_prs.py --owner OWNER --repo REPO --author USERNAME --start-date 12 --end-date 12
+uv run python fetch_github_prs.py --repos OWNER/REPO --username USERNAME --start-date 12 --end-date 12
 
 # Filter PRs from a specific date range
-uv run python fetch_github_prs.py --owner OWNER --repo REPO --author USERNAME --start-date 01.12.2024 --end-date 31.12.2024
+uv run python fetch_github_prs.py --repos OWNER/REPO --username USERNAME --start-date 01.12.2024 --end-date 31.12.2024
 
 # Filter PRs from October 2024 onwards (no end date)
-uv run python fetch_github_prs.py --owner OWNER --repo REPO --author USERNAME --start-date 10
+uv run python fetch_github_prs.py --repos OWNER/REPO --username USERNAME --start-date 10
 
 # Filter PRs up to a specific date (no start date)
-uv run python fetch_github_prs.py --owner OWNER --repo REPO --author USERNAME --end-date 15.11.2024
+uv run python fetch_github_prs.py --repos OWNER/REPO --username USERNAME --end-date 15.11.2024
+```
+
+### Fetch Only Authored or Reviewed PRs
+
+```bash
+# Only authored PRs
+uv run python fetch_github_prs.py --repos OWNER/REPO --username USERNAME --authored-only
+
+# Only reviewed PRs
+uv run python fetch_github_prs.py --repos OWNER/REPO --username USERNAME --reviewed-only
+```
+
+### Customization Options
+
+```bash
+uv run python fetch_github_prs.py \
+  --repos OWNER/REPO \
+  --username USERNAME \
+  --primary-color "#2e7d32" \
+  --bg-color "#fafafa" \
+  --text-color "#212121" \
+  --font-family "Georgia, serif" \
+  --custom-title "Q4 2024 PR Summary" \
+  --sort-by date-oldest \
+  --filter-status MERGED OPEN \
+  --no-descriptions
 ```
 
 ## Command-Line Arguments
 
-| Argument | Required | Description |
-|----------|----------|-------------|
-| `--owner` | Yes | Repository owner (username or org) |
-| `--repo` | Yes | Repository name |
-| `--author` | Yes | Your GitHub username |
-| `--token` | No | GitHub personal access token |
-| `--pdf` | No | Export to PDF instead of HTML |
-| `--output` | No | Custom output filename |
-| `--last-month` | No | Filter PRs from last month |
-| `--start-date` | No | Start date (dd.mm.yyyy or 1-12) |
-| `--end-date` | No | End date (dd.mm.yyyy or 1-12) |
+### Required Arguments
+| Argument | Description |
+|----------|-------------|
+| `--repos` | Repositories (format: owner/repo). Multiple: 'owner1/repo1,owner2/repo2' |
+| `--username` | GitHub username (for both authored and reviewed PRs) |
+
+### Optional Arguments
+| Argument | Description |
+|----------|-------------|
+| `--token` | GitHub personal access token (recommended) |
+| `--output` | Custom output filename |
+| `--pdf` | Export to PDF instead of HTML |
+
+### Filtering Options
+| Argument | Description |
+|----------|-------------|
+| `--last-month` | Filter PRs from last month |
+| `--start-date` | Start date (dd.mm.yyyy or 1-12) |
+| `--end-date` | End date (dd.mm.yyyy or 1-12) |
+| `--filter-status` | Include only these statuses (MERGED OPEN CLOSED) |
+| `--authored-only` | Fetch only authored PRs |
+| `--reviewed-only` | Fetch only reviewed PRs |
+
+### Content Options
+| Argument | Description |
+|----------|-------------|
+| `--include-stats` | Include detailed statistics (commits, lines changed) |
+| `--no-descriptions` | Hide PR descriptions |
+| `--no-repo-names` | Hide repository names |
+| `--max-description-length` | Maximum description length (default: 500) |
+| `--sort-by` | Sort by: date-newest, date-oldest, pr-number, status |
+
+### Customization Options
+| Argument | Description |
+|----------|-------------|
+| `--primary-color` | Primary color for merged PRs (default: #228b22) |
+| `--bg-color` | Background color (default: #f5f5f5) |
+| `--text-color` | Text color (default: #333333) |
+| `--font-family` | Font family (default: Arial, sans-serif) |
+| `--custom-title` | Custom report title |
 
 ### Date Filtering Details
 
@@ -227,26 +330,24 @@ uv run python fetch_github_prs.py --owner OWNER --repo REPO --author USERNAME --
 ## Examples
 
 ```bash
-# Fetch all your PRs as HTML (default)
+# Fetch all your PRs as HTML (default) - both authored and reviewed
 uv run python fetch_github_prs.py \
-  --owner facebook \
-  --repo react \
-  --author yourusername \
+  --repos facebook/react \
+  --username yourusername \
   --token ghp_yourtoken
 
-# Fetch PRs as PDF
+# Fetch PRs as PDF with statistics
 uv run python fetch_github_prs.py \
-  --owner facebook \
-  --repo react \
-  --author yourusername \
+  --repos facebook/react \
+  --username yourusername \
   --token ghp_yourtoken \
+  --include-stats \
   --pdf
 
 # Fetch PRs from November 2024 only
 uv run python fetch_github_prs.py \
-  --owner microsoft \
-  --repo vscode \
-  --author yourusername \
+  --repos microsoft/vscode \
+  --username yourusername \
   --start-date 11 \
   --end-date 11 \
   --token ghp_yourtoken \
@@ -254,13 +355,22 @@ uv run python fetch_github_prs.py \
 
 # Fetch PRs from last month as PDF
 uv run python fetch_github_prs.py \
-  --owner google \
-  --repo material-design \
-  --author yourusername \
+  --repos google/material-design \
+  --username yourusername \
   --last-month \
   --token ghp_yourtoken \
   --pdf \
   --output last_month_prs.pdf
+
+# Multiple repos with custom styling
+uv run python fetch_github_prs.py \
+  --repos "owner1/repo1,owner2/repo2" \
+  --username yourusername \
+  --token ghp_yourtoken \
+  --primary-color "#1976d2" \
+  --custom-title "Q4 2024 Contributions" \
+  --sort-by status \
+  --filter-status MERGED
 ```
 
 ## Output Format

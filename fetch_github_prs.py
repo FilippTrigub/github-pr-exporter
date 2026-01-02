@@ -690,22 +690,17 @@ def export_to_pdf(prs: List[Dict], filename: str, repo_name: str, author: str, c
 def main():
     """Main function to run the script."""
     parser = argparse.ArgumentParser(
-        description="Fetch GitHub PRs and export to PDF"
+        description="Fetch GitHub PRs and export to HTML or PDF"
     )
     parser.add_argument(
-        "--owner",
+        "--repos",
         required=True,
-        help="Repository owner (username or organization)"
+        help="Repositories (format: owner/repo). Multiple repos: 'owner1/repo1,owner2/repo2'"
     )
     parser.add_argument(
-        "--repo",
+        "--username",
         required=True,
-        help="Repository name"
-    )
-    parser.add_argument(
-        "--author",
-        required=True,
-        help="PR author username"
+        help="GitHub username (for both authored and reviewed PRs)"
     )
     parser.add_argument(
         "--token",
@@ -733,8 +728,86 @@ def main():
         action="store_true",
         help="Filter PRs from last month only (shortcut for setting both start and end dates)"
     )
+    parser.add_argument(
+        "--include-stats",
+        action="store_true",
+        help="Include detailed statistics (commits, lines changed)"
+    )
+    parser.add_argument(
+        "--authored-only",
+        action="store_true",
+        help="Fetch only authored PRs (default: both authored and reviewed)"
+    )
+    parser.add_argument(
+        "--reviewed-only",
+        action="store_true",
+        help="Fetch only reviewed PRs (default: both authored and reviewed)"
+    )
+
+    # Customization options
+    parser.add_argument(
+        "--primary-color",
+        default="#228b22",
+        help="Primary color for merged PRs (default: #228b22)"
+    )
+    parser.add_argument(
+        "--bg-color",
+        default="#f5f5f5",
+        help="Background color (default: #f5f5f5)"
+    )
+    parser.add_argument(
+        "--text-color",
+        default="#333333",
+        help="Text color (default: #333333)"
+    )
+    parser.add_argument(
+        "--font-family",
+        default="Arial, sans-serif",
+        help="Font family (default: Arial, sans-serif)"
+    )
+    parser.add_argument(
+        "--custom-title",
+        default="",
+        help="Custom report title (default: auto-generated)"
+    )
+    parser.add_argument(
+        "--no-descriptions",
+        action="store_true",
+        help="Hide PR descriptions"
+    )
+    parser.add_argument(
+        "--no-repo-names",
+        action="store_true",
+        help="Hide repository names"
+    )
+    parser.add_argument(
+        "--max-description-length",
+        type=int,
+        default=500,
+        help="Maximum description length (default: 500)"
+    )
+    parser.add_argument(
+        "--sort-by",
+        choices=["date-newest", "date-oldest", "pr-number", "status"],
+        default="date-newest",
+        help="Sort PRs by (default: date-newest)"
+    )
+    parser.add_argument(
+        "--filter-status",
+        nargs="+",
+        choices=["MERGED", "OPEN", "CLOSED"],
+        default=["MERGED", "OPEN", "CLOSED"],
+        help="Include only these statuses (default: all)"
+    )
 
     args = parser.parse_args()
+
+    # Parse repositories
+    repos = [repo.strip() for repo in args.repos.replace(',', ' ').split() if '/' in repo]
+
+    if not repos:
+        print("Error: No valid repositories provided (format: owner/repo)")
+        return
 
     # Determine output format and filename
     output_format = "pdf" if args.pdf else "html"
@@ -743,21 +816,76 @@ def main():
     else:
         output_filename = f"github_prs.{output_format}"
 
-    print(f"Fetching PRs by {args.author} from {args.owner}/{args.repo}...")
+    # Build customization dict
+    sort_by_map = {
+        "date-newest": "Date (newest first)",
+        "date-oldest": "Date (oldest first)",
+        "pr-number": "PR Number",
+        "status": "Status"
+    }
+
+    customization = {
+        'show_description': not args.no_descriptions,
+        'show_repo_name': not args.no_repo_names,
+        'max_description_length': args.max_description_length,
+        'sort_by': sort_by_map[args.sort_by],
+        'filter_status': args.filter_status,
+        'primary_color': args.primary_color,
+        'bg_color': args.bg_color,
+        'text_color': args.text_color,
+        'font_family': args.font_family,
+        'custom_title': args.custom_title
+    }
+
+    repo_names = ", ".join(repos) if len(repos) <= 3 else f"{len(repos)} repositories"
+    print(f"Fetching PRs by {args.username} from {repo_names}...")
     print(f"Output format: {output_format.upper()}")
 
-    # Fetch PRs
-    fetcher = GitHubPRFetcher(token=args.token)
-    prs = fetcher.fetch_user_prs(args.owner, args.repo, args.author)
+    # Determine what to fetch
+    fetch_authored = not args.reviewed_only
+    fetch_reviewed = not args.authored_only
 
-    if not prs:
-        print(f"No PRs found for author {args.author}")
+    # Fetch PRs from all repositories
+    fetcher = GitHubPRFetcher(token=args.token)
+    all_prs = []
+
+    for repo in repos:
+        try:
+            owner, repo_name = repo.split('/')
+
+            # Fetch authored PRs
+            if fetch_authored:
+                print(f"Fetching authored PRs from {repo}...")
+                authored_prs = fetcher.fetch_user_prs(owner, repo_name, args.username)
+                if authored_prs:
+                    formatted_authored = fetcher.format_pr_data(authored_prs, owner, repo_name, args.include_stats)
+                    for pr in formatted_authored:
+                        pr['pr_type'] = 'Authored'
+                    all_prs.extend(formatted_authored)
+                    print(f"  Found {len(authored_prs)} authored PR(s)")
+
+            # Fetch reviewed PRs
+            if fetch_reviewed:
+                print(f"Fetching reviewed PRs from {repo}...")
+                reviewed_prs = fetcher.fetch_reviewed_prs(owner, repo_name, args.username)
+                if reviewed_prs:
+                    formatted_reviewed = fetcher.format_pr_data(reviewed_prs, owner, repo_name, args.include_stats)
+                    for pr in formatted_reviewed:
+                        pr['pr_type'] = 'Reviewed'
+                    all_prs.extend(formatted_reviewed)
+                    print(f"  Found {len(reviewed_prs)} reviewed PR(s)")
+
+        except Exception as e:
+            print(f"Error fetching from {repo}: {e}")
+
+    if not all_prs:
+        print("No PRs found")
         return
 
-    print(f"Found {len(prs)} PRs")
-
-    # Format PRs
-    formatted_prs = fetcher.format_pr_data(prs)
+    # Count by type
+    authored_count = sum(1 for pr in all_prs if pr.get('pr_type') == 'Authored')
+    reviewed_count = sum(1 for pr in all_prs if pr.get('pr_type') == 'Reviewed')
+    print(f"\nFound {len(all_prs)} total PR(s): {authored_count} authored, {reviewed_count} reviewed")
 
     # Apply date filtering
     start_date_str = args.start_date
@@ -778,10 +906,10 @@ def main():
             if end_date:
                 print(f"Filtering PRs until: {end_date.strftime('%Y-%m-%d')}")
 
-            formatted_prs = filter_prs_by_date(formatted_prs, start_date, end_date)
-            print(f"After filtering: {len(formatted_prs)} PRs")
+            all_prs = filter_prs_by_date(all_prs, start_date, end_date)
+            print(f"After filtering: {len(all_prs)} PRs")
 
-            if not formatted_prs:
+            if not all_prs:
                 print("No PRs found matching the date filter")
                 return
         except ValueError as e:
@@ -789,11 +917,11 @@ def main():
             return
 
     # Export to chosen format
-    repo_full_name = f"{args.owner}/{args.repo}"
+    print(f"\nExporting to {output_format.upper()}...")
     if args.pdf:
-        export_to_pdf(formatted_prs, output_filename, repo_full_name, args.author)
+        export_to_pdf(all_prs, output_filename, repo_names, args.username, customization)
     else:
-        export_to_html(formatted_prs, output_filename, repo_full_name, args.author)
+        export_to_html(all_prs, output_filename, repo_names, args.username, customization)
 
     print(f"Done! Check {output_filename}")
 
