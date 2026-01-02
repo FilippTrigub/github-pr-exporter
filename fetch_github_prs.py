@@ -435,6 +435,14 @@ class PDFExporter(FPDF):
         self.set_text_color(0, 0, 0)
         self.set_fill_color(255, 255, 255)
 
+        # PR Type (Authored/Reviewed) - ensure at left margin
+        if 'pr_type' in pr and pr['pr_type']:
+            self.set_x(self.l_margin)
+            self.set_font('Arial', 'I', 7)
+            self.set_text_color(100, 100, 100)
+            self.multi_cell(0, 4, f"[{pr['pr_type']}]", 0, 'L')
+            self.set_text_color(0, 0, 0)
+
         # PR Number and Title - ensure at left margin
         self.set_x(self.l_margin)
         self.set_font('Arial', 'B', 10)
@@ -617,6 +625,16 @@ def export_to_html(prs: List[Dict], filename: str, repo_name: str, author: str):
             margin-bottom: 8px;
             font-family: 'Courier New', monospace;
         }}
+        .pr-type {{
+            display: inline-block;
+            font-size: 11px;
+            color: #666;
+            font-style: italic;
+            margin-bottom: 4px;
+            padding: 2px 8px;
+            background: #f0f0f0;
+            border-radius: 3px;
+        }}
         .stats-summary {{
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -681,6 +699,7 @@ def export_to_html(prs: List[Dict], filename: str, repo_name: str, author: str):
         status_class = "merged" if pr['merged'] else pr['state'].lower()
         date = pr['merged_at'] if pr['merged'] else pr['created_at']
 
+        pr_type_html = f'<div class="pr-type">{pr.get("pr_type", "Unknown")}</div>' if pr.get('pr_type') else ''
         repo_html = f'<div class="pr-repo">Repository: {sanitize_text(pr.get("repo", "Unknown"))}</div>' if pr.get('repo') else ''
         stats_html = ''
         if pr.get('commits', 0) > 0 or pr.get('additions', 0) > 0:
@@ -689,6 +708,7 @@ def export_to_html(prs: List[Dict], filename: str, repo_name: str, author: str):
         html_content += f"""
         <div class="pr-item">
             <div class="status-badge status-{status_class}">{status}</div>
+            {pr_type_html}
             <div class="pr-title">#{pr['number']} - {sanitize_text(pr['title'])}</div>
             <div class="pr-date">{date}</div>
             {repo_html}

@@ -29,10 +29,9 @@ with st.form("pr_export_form"):
             placeholder="owner/repo (e.g., facebook/react)\nOne per line or comma-separated",
             help="Enter one or more repositories in the format: owner/repo"
         )
-        username = st.text_input("Username *", placeholder="e.g., yourusername")
 
     with col2:
-        pr_type = st.radio("PR Type *", ["Authored", "Reviewed"], horizontal=True)
+        username = st.text_input("Username *", placeholder="e.g., yourusername")
         token = st.text_input(
             "GitHub Token (optional)",
             type="password",
@@ -108,17 +107,26 @@ if submitted:
         for idx, repo in enumerate(repos):
             try:
                 owner, repo_name = repo.split('/')
-                status_text.text(f"Fetching {pr_type.lower()} PRs from {repo}...")
 
-                # Fetch PRs based on type
-                if pr_type == "Authored":
-                    prs = fetcher.fetch_user_prs(owner, repo_name, username)
-                else:
-                    prs = fetcher.fetch_reviewed_prs(owner, repo_name, username)
+                # Fetch authored PRs
+                status_text.text(f"Fetching authored PRs from {repo}...")
+                authored_prs = fetcher.fetch_user_prs(owner, repo_name, username)
+                if authored_prs:
+                    formatted_authored = fetcher.format_pr_data(authored_prs, owner, repo_name, include_stats)
+                    # Mark as authored
+                    for pr in formatted_authored:
+                        pr['pr_type'] = 'Authored'
+                    all_prs.extend(formatted_authored)
 
-                if prs:
-                    formatted_prs = fetcher.format_pr_data(prs, owner, repo_name, include_stats)
-                    all_prs.extend(formatted_prs)
+                # Fetch reviewed PRs
+                status_text.text(f"Fetching reviewed PRs from {repo}...")
+                reviewed_prs = fetcher.fetch_reviewed_prs(owner, repo_name, username)
+                if reviewed_prs:
+                    formatted_reviewed = fetcher.format_pr_data(reviewed_prs, owner, repo_name, include_stats)
+                    # Mark as reviewed
+                    for pr in formatted_reviewed:
+                        pr['pr_type'] = 'Reviewed'
+                    all_prs.extend(formatted_reviewed)
 
                 progress_bar.progress((idx + 1) / len(repos))
 
@@ -129,7 +137,7 @@ if submitted:
         status_text.empty()
 
         if not all_prs:
-            st.warning(f"No {pr_type.lower()} pull requests found")
+            st.warning("No pull requests found")
         else:
             # Apply date filter if needed
             if start_date or end_date:
@@ -141,8 +149,12 @@ if submitted:
                     st.warning("No pull requests found matching the date filter")
                     st.stop()
 
+            # Count by type
+            authored_count = sum(1 for pr in all_prs if pr.get('pr_type') == 'Authored')
+            reviewed_count = sum(1 for pr in all_prs if pr.get('pr_type') == 'Reviewed')
+
             # Display aggregate statistics
-            st.success(f"Found {len(all_prs)} {pr_type.lower()} pull request(s)")
+            st.success(f"Found {len(all_prs)} pull request(s): {authored_count} authored, {reviewed_count} reviewed")
 
             if include_stats:
                 st.subheader("📈 Aggregate Statistics")
@@ -171,6 +183,7 @@ if submitted:
             display_data = []
             for pr in all_prs:
                 row = {
+                    "Type": pr.get('pr_type', 'Unknown'),
                     "Repo": pr.get('repo', 'Unknown'),
                     "PR": f"#{pr['number']}",
                     "Title": pr['title'][:50] + "..." if len(pr['title']) > 50 else pr['title'],
@@ -214,7 +227,7 @@ if submitted:
                         st.success(f"{output_format} generated successfully!")
 
                         # Download button
-                        filename = f"github_prs_{username}_{pr_type.lower()}.{output_format.lower()}"
+                        filename = f"github_prs_{username}.{output_format.lower()}"
                         st.download_button(
                             label=f"💾 Download {output_format}",
                             data=file_data,
