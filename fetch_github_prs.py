@@ -248,12 +248,101 @@ class GitHubPRFetcher:
 
         return all_prs
 
-    def format_pr_data(self, prs: List[Dict]) -> List[Dict]:
+    def fetch_reviewed_prs(self, owner: str, repo: str, reviewer: str) -> List[Dict]:
+        """
+        Fetch all PRs reviewed by a specific user.
+
+        Args:
+            owner: Repository owner (username or organization)
+            repo: Repository name
+            reviewer: PR reviewer username
+
+        Returns:
+            List of PR dictionaries
+        """
+        all_prs = []
+        page = 1
+        per_page = 100
+
+        while True:
+            # Fetch PRs with pagination
+            url = f"{self.base_url}/repos/{owner}/{repo}/pulls"
+            params = {
+                "state": "all",
+                "per_page": per_page,
+                "page": page,
+                "sort": "created",
+                "direction": "desc"
+            }
+
+            response = requests.get(url, headers=self.headers, params=params)
+
+            if response.status_code != 200:
+                raise Exception(f"GitHub API error: {response.status_code} - {response.text}")
+
+            prs = response.json()
+
+            if not prs:
+                break
+
+            # Check each PR for reviews by the user
+            for pr in prs:
+                reviews_url = f"{self.base_url}/repos/{owner}/{repo}/pulls/{pr['number']}/reviews"
+                reviews_response = requests.get(reviews_url, headers=self.headers)
+
+                if reviews_response.status_code == 200:
+                    reviews = reviews_response.json()
+                    # Check if user has reviewed this PR
+                    if any(review["user"]["login"] == reviewer for review in reviews):
+                        all_prs.append(pr)
+
+            page += 1
+
+            if len(prs) < per_page:
+                break
+
+        return all_prs
+
+    def get_pr_details(self, owner: str, repo: str, pr_number: int) -> Dict:
+        """
+        Get detailed statistics for a specific PR.
+
+        Args:
+            owner: Repository owner
+            repo: Repository name
+            pr_number: PR number
+
+        Returns:
+            Dictionary with detailed PR stats
+        """
+        url = f"{self.base_url}/repos/{owner}/{repo}/pulls/{pr_number}"
+        response = requests.get(url, headers=self.headers)
+
+        if response.status_code != 200:
+            return {
+                "commits": 0,
+                "additions": 0,
+                "deletions": 0,
+                "changed_files": 0
+            }
+
+        pr_data = response.json()
+        return {
+            "commits": pr_data.get("commits", 0),
+            "additions": pr_data.get("additions", 0),
+            "deletions": pr_data.get("deletions", 0),
+            "changed_files": pr_data.get("changed_files", 0)
+        }
+
+    def format_pr_data(self, prs: List[Dict], owner: str = None, repo: str = None, include_stats: bool = False) -> List[Dict]:
         """
         Format PR data for display.
 
         Args:
             prs: List of raw PR data from GitHub API
+            owner: Repository owner (required if include_stats is True)
+            repo: Repository name (required if include_stats is True)
+            include_stats: Whether to fetch detailed stats for each PR
 
         Returns:
             List of formatted PR dictionaries
@@ -273,8 +362,22 @@ class GitHubPRFetcher:
                 "merged": pr.get("merged_at") is not None,
                 "merged_at": datetime.strptime(
                     pr["merged_at"], "%Y-%m-%dT%H:%M:%SZ"
-                ).strftime("%Y-%m-%d %H:%M:%S") if pr.get("merged_at") else None
+                ).strftime("%Y-%m-%d %H:%M:%S") if pr.get("merged_at") else None,
+                "repo": f"{owner}/{repo}" if owner and repo else "Unknown"
             }
+
+            # Add detailed stats if requested
+            if include_stats and owner and repo:
+                details = self.get_pr_details(owner, repo, pr["number"])
+                formatted_pr.update(details)
+            else:
+                formatted_pr.update({
+                    "commits": 0,
+                    "additions": 0,
+                    "deletions": 0,
+                    "changed_files": 0
+                })
+
             formatted_prs.append(formatted_pr)
 
         return formatted_prs
@@ -345,6 +448,23 @@ class PDFExporter(FPDF):
         self.set_text_color(100, 100, 100)
         self.multi_cell(0, 4, date, 0, 'L')
         self.set_text_color(0, 0, 0)
+
+        # Repository - ensure at left margin
+        if 'repo' in pr and pr['repo']:
+            self.set_x(self.l_margin)
+            self.set_font('Arial', '', 7)
+            self.set_text_color(100, 100, 100)
+            self.multi_cell(0, 4, f"Repository: {sanitize_text(pr['repo'])}", 0, 'L')
+            self.set_text_color(0, 0, 0)
+
+        # Statistics - ensure at left margin
+        if pr.get('commits', 0) > 0 or pr.get('additions', 0) > 0:
+            self.set_x(self.l_margin)
+            self.set_font('Arial', '', 7)
+            self.set_text_color(100, 100, 100)
+            stats_text = f"Commits: {pr.get('commits', 0)} | +{pr.get('additions', 0)} -{pr.get('deletions', 0)} lines"
+            self.multi_cell(0, 4, stats_text, 0, 'L')
+            self.set_text_color(0, 0, 0)
 
         # URL - ensure at left margin
         self.set_x(self.l_margin)
@@ -485,6 +605,40 @@ def export_to_html(prs: List[Dict], filename: str, repo_name: str, author: str):
             white-space: pre-wrap;
             word-wrap: break-word;
         }}
+        .pr-repo {{
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 4px;
+            font-weight: 500;
+        }}
+        .pr-stats {{
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 8px;
+            font-family: 'Courier New', monospace;
+        }}
+        .stats-summary {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 12px;
+            margin-bottom: 24px;
+        }}
+        .stat-card {{
+            background: #f8f9fa;
+            padding: 12px 16px;
+            border-radius: 6px;
+            text-align: center;
+        }}
+        .stat-label {{
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 4px;
+        }}
+        .stat-value {{
+            font-size: 20px;
+            font-weight: 600;
+            color: #333;
+        }}
         .footer {{
             text-align: center;
             margin-top: 40px;
@@ -502,7 +656,24 @@ def export_to_html(prs: List[Dict], filename: str, repo_name: str, author: str):
             <div class="repo">Repository: {sanitize_text(repo_name)}</div>
         </div>
 
-        <div class="summary">Total PRs: {len(prs)}</div>
+        <div class="stats-summary">
+            <div class="stat-card">
+                <div class="stat-label">Total PRs</div>
+                <div class="stat-value">{len(prs)}</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Total Commits</div>
+                <div class="stat-value">{sum(pr.get('commits', 0) for pr in prs):,}</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Lines Added</div>
+                <div class="stat-value">{sum(pr.get('additions', 0) for pr in prs):,}</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Lines Deleted</div>
+                <div class="stat-value">{sum(pr.get('deletions', 0) for pr in prs):,}</div>
+            </div>
+        </div>
 """
 
     for pr in prs:
@@ -510,11 +681,18 @@ def export_to_html(prs: List[Dict], filename: str, repo_name: str, author: str):
         status_class = "merged" if pr['merged'] else pr['state'].lower()
         date = pr['merged_at'] if pr['merged'] else pr['created_at']
 
+        repo_html = f'<div class="pr-repo">Repository: {sanitize_text(pr.get("repo", "Unknown"))}</div>' if pr.get('repo') else ''
+        stats_html = ''
+        if pr.get('commits', 0) > 0 or pr.get('additions', 0) > 0:
+            stats_html = f'<div class="pr-stats">Commits: {pr.get("commits", 0)} | +{pr.get("additions", 0)} -{pr.get("deletions", 0)} lines</div>'
+
         html_content += f"""
         <div class="pr-item">
             <div class="status-badge status-{status_class}">{status}</div>
             <div class="pr-title">#{pr['number']} - {sanitize_text(pr['title'])}</div>
             <div class="pr-date">{date}</div>
+            {repo_html}
+            {stats_html}
             <div class="pr-url"><a href="{pr['url']}" target="_blank">{pr['url']}</a></div>
             <div class="pr-description">{sanitize_text(pr['description'][:500])}</div>
         </div>

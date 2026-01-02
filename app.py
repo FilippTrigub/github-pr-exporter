@@ -12,7 +12,7 @@ from fetch_github_prs import GitHubPRFetcher, export_to_html, export_to_pdf, fil
 st.set_page_config(
     page_title="GitHub PR Exporter",
     page_icon="📊",
-    layout="centered"
+    layout="wide"
 )
 
 st.title("📊 GitHub PR Exporter")
@@ -24,13 +24,20 @@ with st.form("pr_export_form"):
 
     col1, col2 = st.columns(2)
     with col1:
-        owner = st.text_input("Repository Owner *", placeholder="e.g., facebook")
-        author = st.text_input("PR Author *", placeholder="e.g., yourusername")
+        repos_input = st.text_area(
+            "Repositories *",
+            placeholder="owner/repo (e.g., facebook/react)\nOne per line or comma-separated",
+            help="Enter one or more repositories in the format: owner/repo"
+        )
+        username = st.text_input("Username *", placeholder="e.g., yourusername")
 
     with col2:
-        repo = st.text_input("Repository Name *", placeholder="e.g., react")
-        token = st.text_input("GitHub Token (optional)", type="password",
-                              help="Required for private repos. Increases rate limit from 60 to 5000 requests/hour")
+        pr_type = st.radio("PR Type *", ["Authored", "Reviewed"], horizontal=True)
+        token = st.text_input(
+            "GitHub Token (optional)",
+            type="password",
+            help="Required for private repos. Increases rate limit from 60 to 5000 requests/hour"
+        )
 
     st.subheader("Date Filtering (optional)")
 
@@ -68,47 +75,133 @@ with st.form("pr_export_form"):
         start_date = last_day_prev.replace(day=1).strftime("%d.%m.%Y")
         end_date = last_day_prev.strftime("%d.%m.%Y")
 
-    st.subheader("Output Format")
-    output_format = st.radio("Export as:", ["HTML", "PDF"], horizontal=True)
+    st.subheader("Output Options")
+    col1, col2 = st.columns(2)
+    with col1:
+        include_stats = st.checkbox("Include detailed statistics", value=True)
+    with col2:
+        output_format = st.radio("Export as:", ["HTML", "PDF"], horizontal=True)
 
-    submitted = st.form_submit_button("Export PRs", type="primary", use_container_width=True)
+    submitted = st.form_submit_button("Fetch PRs", type="primary", use_container_width=True)
 
 if submitted:
+    # Parse repositories
+    repos = []
+    if repos_input:
+        # Split by newlines and commas, strip whitespace
+        for line in repos_input.replace(',', '\n').split('\n'):
+            line = line.strip()
+            if line and '/' in line:
+                repos.append(line)
+
     # Validation
-    if not owner or not repo or not author:
-        st.error("Please fill in all required fields (Owner, Repo, Author)")
+    if not repos or not username:
+        st.error("Please fill in all required fields (Repositories and Username)")
     else:
-        with st.spinner("Fetching pull requests..."):
+        all_prs = []
+        fetcher = GitHubPRFetcher(token if token else None)
+
+        # Fetch PRs from all repositories
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+
+        for idx, repo in enumerate(repos):
             try:
-                # Fetch PRs
-                fetcher = GitHubPRFetcher(token if token else None)
-                prs = fetcher.fetch_user_prs(owner, repo, author)
+                owner, repo_name = repo.split('/')
+                status_text.text(f"Fetching {pr_type.lower()} PRs from {repo}...")
 
-                if not prs:
-                    st.warning(f"No pull requests found for {author} in {owner}/{repo}")
+                # Fetch PRs based on type
+                if pr_type == "Authored":
+                    prs = fetcher.fetch_user_prs(owner, repo_name, username)
                 else:
-                    formatted_prs = fetcher.format_pr_data(prs)
+                    prs = fetcher.fetch_reviewed_prs(owner, repo_name, username)
 
-                    # Apply date filter if needed
-                    if start_date or end_date:
-                        start_dt = parse_date_filter(start_date) if start_date else None
-                        end_dt = parse_date_filter(end_date) if end_date else None
-                        formatted_prs = filter_prs_by_date(formatted_prs, start_dt, end_dt)
+                if prs:
+                    formatted_prs = fetcher.format_pr_data(prs, owner, repo_name, include_stats)
+                    all_prs.extend(formatted_prs)
 
-                        if not formatted_prs:
-                            st.warning("No pull requests found matching the date filter")
-                            st.stop()
+                progress_bar.progress((idx + 1) / len(repos))
 
-                    st.success(f"Found {len(formatted_prs)} pull request(s)")
+            except Exception as e:
+                st.warning(f"Error fetching from {repo}: {str(e)}")
 
-                    # Generate export
+        progress_bar.empty()
+        status_text.empty()
+
+        if not all_prs:
+            st.warning(f"No {pr_type.lower()} pull requests found")
+        else:
+            # Apply date filter if needed
+            if start_date or end_date:
+                start_dt = parse_date_filter(start_date) if start_date else None
+                end_dt = parse_date_filter(end_date) if end_date else None
+                all_prs = filter_prs_by_date(all_prs, start_dt, end_dt)
+
+                if not all_prs:
+                    st.warning("No pull requests found matching the date filter")
+                    st.stop()
+
+            # Display aggregate statistics
+            st.success(f"Found {len(all_prs)} {pr_type.lower()} pull request(s)")
+
+            if include_stats:
+                st.subheader("📈 Aggregate Statistics")
+                col1, col2, col3, col4 = st.columns(4)
+
+                total_commits = sum(pr.get('commits', 0) for pr in all_prs)
+                total_additions = sum(pr.get('additions', 0) for pr in all_prs)
+                total_deletions = sum(pr.get('deletions', 0) for pr in all_prs)
+                total_changes = total_additions + total_deletions
+
+                with col1:
+                    st.metric("Total PRs", len(all_prs))
+                with col2:
+                    st.metric("Total Commits", f"{total_commits:,}")
+                with col3:
+                    st.metric("Lines Added", f"{total_additions:,}")
+                with col4:
+                    st.metric("Lines Deleted", f"{total_deletions:,}")
+
+                st.markdown("---")
+
+            # Display PR table
+            st.subheader("Pull Requests")
+
+            # Format data for display
+            display_data = []
+            for pr in all_prs:
+                row = {
+                    "Repo": pr.get('repo', 'Unknown'),
+                    "PR": f"#{pr['number']}",
+                    "Title": pr['title'][:50] + "..." if len(pr['title']) > 50 else pr['title'],
+                    "Status": "MERGED" if pr['merged'] else pr['state'].upper(),
+                    "Date": pr['merged_at'] if pr['merged'] else pr['created_at']
+                }
+
+                if include_stats:
+                    row.update({
+                        "Commits": pr.get('commits', 0),
+                        "Lines Changed": f"+{pr.get('additions', 0)} -{pr.get('deletions', 0)}"
+                    })
+
+                display_data.append(row)
+
+            st.dataframe(display_data, use_container_width=True, hide_index=True)
+
+            # Export button
+            st.markdown("---")
+            col1, col2, col3 = st.columns([1, 2, 1])
+            with col2:
+                if st.button(f"📥 Export to {output_format}", use_container_width=True, type="primary"):
                     with st.spinner(f"Generating {output_format}..."):
                         with tempfile.NamedTemporaryFile(delete=False, suffix=f".{output_format.lower()}") as tmp:
+                            repo_names = ", ".join(repos) if len(repos) <= 3 else f"{len(repos)} repositories"
+
                             if output_format == "HTML":
-                                export_to_html(formatted_prs, tmp.name, f"{owner}/{repo}", author)
+                                export_to_html(all_prs, tmp.name, repo_names, username)
                                 mime_type = "text/html"
                             else:
-                                export_to_pdf(formatted_prs, tmp.name, f"{owner}/{repo}", author)
+                                export_to_pdf(all_prs, tmp.name, repo_names, username)
                                 mime_type = "application/pdf"
 
                             # Read file for download
@@ -118,20 +211,17 @@ if submitted:
                             # Cleanup
                             os.unlink(tmp.name)
 
-                    st.success(f"{output_format} generated successfully!")
+                        st.success(f"{output_format} generated successfully!")
 
-                    # Download button
-                    filename = f"github_prs_{owner}_{repo}_{author}.{output_format.lower()}"
-                    st.download_button(
-                        label=f"📥 Download {output_format}",
-                        data=file_data,
-                        file_name=filename,
-                        mime=mime_type,
-                        use_container_width=True
-                    )
-
-            except Exception as e:
-                st.error(f"Error: {str(e)}")
+                        # Download button
+                        filename = f"github_prs_{username}_{pr_type.lower()}.{output_format.lower()}"
+                        st.download_button(
+                            label=f"💾 Download {output_format}",
+                            data=file_data,
+                            file_name=filename,
+                            mime=mime_type,
+                            use_container_width=True
+                        )
 
 # Footer
 st.markdown("---")
