@@ -19,66 +19,65 @@ st.title("📊 GitHub PR Exporter")
 st.markdown("Export your GitHub pull requests to HTML or PDF")
 
 # Input fields
-with st.form("pr_export_form"):
-    st.subheader("Repository Details")
+st.subheader("Repository Details")
 
-    repos_input = st.text_area(
-        "Repositories *",
-        placeholder="owner/repo (e.g., facebook/react)\nOne per line or comma-separated",
-        help="Enter one or more repositories in the format: owner/repo"
-    )
+repos_input = st.text_area(
+    "Repositories *",
+    placeholder="owner/repo (e.g., facebook/react)\nOne per line or comma-separated",
+    help="Enter one or more repositories in the format: owner/repo"
+)
 
-    username = st.text_input("Username *", placeholder="e.g., yourusername")
+username = st.text_input("Username *", placeholder="e.g., yourusername")
 
-    token = st.text_input(
-        "GitHub Token (optional)",
-        type="password",
-        help="Required for private repos. Increases rate limit from 60 to 5000 requests/hour"
-    )
+token = st.text_input(
+    "GitHub Token (optional)",
+    type="password",
+    help="Required for private repos. Increases rate limit from 60 to 5000 requests/hour"
+)
 
-    st.subheader("Date Filtering (optional)")
+st.subheader("Date Filtering (optional)")
 
-    date_filter_type = st.radio(
-        "Filter by:",
-        ["All PRs", "Last Month", "Specific Month", "Custom Date Range"],
-        horizontal=True
-    )
+date_filter_type = st.radio(
+    "Filter by:",
+    ["All PRs", "Last Month", "Specific Month", "Custom Date Range"],
+    horizontal=True
+)
 
-    start_date = None
-    end_date = None
+start_date = None
+end_date = None
 
-    if date_filter_type == "Specific Month":
-        col1, col2 = st.columns(2)
-        with col1:
-            month = st.selectbox("Month", range(1, 13), format_func=lambda x: datetime(2000, x, 1).strftime("%B"))
-        with col2:
-            year = st.number_input("Year", min_value=2000, max_value=datetime.now().year, value=datetime.now().year)
-        start_date = f"{month:02d}.{year}"
-        end_date = start_date
+if date_filter_type == "Specific Month":
+    col1, col2 = st.columns(2)
+    with col1:
+        month = st.selectbox("Month", range(1, 13), format_func=lambda x: datetime(2000, x, 1).strftime("%B"))
+    with col2:
+        year = st.number_input("Year", min_value=2000, max_value=datetime.now().year, value=datetime.now().year)
+    start_date = f"{month:02d}.{year}"
+    end_date = start_date
 
-    elif date_filter_type == "Custom Date Range":
-        col1, col2 = st.columns(2)
-        with col1:
-            start_date_input = st.date_input("Start Date")
-            start_date = start_date_input.strftime("%d.%m.%Y") if start_date_input else None
-        with col2:
-            end_date_input = st.date_input("End Date")
-            end_date = end_date_input.strftime("%d.%m.%Y") if end_date_input else None
+elif date_filter_type == "Custom Date Range":
+    col1, col2 = st.columns(2)
+    with col1:
+        start_date_input = st.date_input("Start Date")
+        start_date = start_date_input.strftime("%d.%m.%Y") if start_date_input else None
+    with col2:
+        end_date_input = st.date_input("End Date")
+        end_date = end_date_input.strftime("%d.%m.%Y") if end_date_input else None
 
-    elif date_filter_type == "Last Month":
-        today = datetime.now()
-        first_day_current = today.replace(day=1)
-        last_day_prev = first_day_current - timedelta(days=1)
-        start_date = last_day_prev.replace(day=1).strftime("%d.%m.%Y")
-        end_date = last_day_prev.strftime("%d.%m.%Y")
+elif date_filter_type == "Last Month":
+    today = datetime.now()
+    first_day_current = today.replace(day=1)
+    last_day_prev = first_day_current - timedelta(days=1)
+    start_date = last_day_prev.replace(day=1).strftime("%d.%m.%Y")
+    end_date = last_day_prev.strftime("%d.%m.%Y")
 
-    st.subheader("Output Options")
+st.subheader("Output Options")
 
-    include_stats = st.checkbox("Include detailed statistics", value=True)
+include_stats = st.checkbox("Include detailed statistics", value=True)
 
-    output_format = st.radio("Export as:", ["HTML", "PDF"], horizontal=True)
+output_format = st.radio("Export as:", ["HTML", "PDF"], horizontal=True)
 
-    submitted = st.form_submit_button("Fetch PRs", type="primary", use_container_width=True)
+submitted = st.button("Fetch PRs", type="primary", use_container_width=True)
 
 if submitted:
     # Parse repositories
