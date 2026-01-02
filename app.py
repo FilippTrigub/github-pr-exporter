@@ -12,7 +12,7 @@ from fetch_github_prs import GitHubPRFetcher, export_to_html, export_to_pdf, fil
 st.set_page_config(
     page_title="GitHub PR Exporter",
     page_icon="📊",
-    layout="wide"
+    layout="centered"
 )
 
 st.title("📊 GitHub PR Exporter")
@@ -22,21 +22,19 @@ st.markdown("Export your GitHub pull requests to HTML or PDF")
 with st.form("pr_export_form"):
     st.subheader("Repository Details")
 
-    col1, col2 = st.columns(2)
-    with col1:
-        repos_input = st.text_area(
-            "Repositories *",
-            placeholder="owner/repo (e.g., facebook/react)\nOne per line or comma-separated",
-            help="Enter one or more repositories in the format: owner/repo"
-        )
+    repos_input = st.text_area(
+        "Repositories *",
+        placeholder="owner/repo (e.g., facebook/react)\nOne per line or comma-separated",
+        help="Enter one or more repositories in the format: owner/repo"
+    )
 
-    with col2:
-        username = st.text_input("Username *", placeholder="e.g., yourusername")
-        token = st.text_input(
-            "GitHub Token (optional)",
-            type="password",
-            help="Required for private repos. Increases rate limit from 60 to 5000 requests/hour"
-        )
+    username = st.text_input("Username *", placeholder="e.g., yourusername")
+
+    token = st.text_input(
+        "GitHub Token (optional)",
+        type="password",
+        help="Required for private repos. Increases rate limit from 60 to 5000 requests/hour"
+    )
 
     st.subheader("Date Filtering (optional)")
 
@@ -75,11 +73,10 @@ with st.form("pr_export_form"):
         end_date = last_day_prev.strftime("%d.%m.%Y")
 
     st.subheader("Output Options")
-    col1, col2 = st.columns(2)
-    with col1:
-        include_stats = st.checkbox("Include detailed statistics", value=True)
-    with col2:
-        output_format = st.radio("Export as:", ["HTML", "PDF"], horizontal=True)
+
+    include_stats = st.checkbox("Include detailed statistics", value=True)
+
+    output_format = st.radio("Export as:", ["HTML", "PDF"], horizontal=True)
 
     submitted = st.form_submit_button("Fetch PRs", type="primary", use_container_width=True)
 
