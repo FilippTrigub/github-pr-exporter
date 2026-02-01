@@ -200,7 +200,7 @@ class GitHubPRFetcher:
         if token:
             self.headers["Authorization"] = f"token {token}"
 
-    def fetch_user_prs(self, owner: str, repo: str, author: str) -> List[Dict]:
+    def fetch_user_prs(self, owner: str, repo: str, author: str, include_stats: bool = False) -> List[Dict]:
         """
         Fetch all PRs authored by a specific user.
 
@@ -208,6 +208,7 @@ class GitHubPRFetcher:
             owner: Repository owner (username or organization)
             repo: Repository name
             author: PR author username
+            include_stats: Whether to fetch full PR data with stats (requires additional API calls)
 
         Returns:
             List of PR dictionaries
@@ -239,7 +240,19 @@ class GitHubPRFetcher:
 
             # Filter PRs by author
             user_prs = [pr for pr in prs if pr["user"]["login"] == author]
-            all_prs.extend(user_prs)
+
+            # If stats are needed, fetch full PR data for each PR
+            # The list endpoint doesn't include commits/additions/deletions
+            if include_stats:
+                for pr in user_prs:
+                    pr_url = pr["url"]  # This is the API URL for the PR
+                    pr_response = requests.get(pr_url, headers=self.headers)
+                    if pr_response.status_code == 200:
+                        all_prs.append(pr_response.json())
+                    else:
+                        all_prs.append(pr)  # Fall back to basic data
+            else:
+                all_prs.extend(user_prs)
 
             page += 1
 
@@ -864,7 +877,7 @@ def main():
             # Fetch authored PRs
             if fetch_authored:
                 print(f"Fetching authored PRs from {repo}...")
-                authored_prs = fetcher.fetch_user_prs(owner, repo_name, args.username)
+                authored_prs = fetcher.fetch_user_prs(owner, repo_name, args.username, include_stats=args.include_stats)
                 if authored_prs:
                     formatted_authored = fetcher.format_pr_data(authored_prs, owner, repo_name, args.include_stats)
                     for pr in formatted_authored:

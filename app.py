@@ -48,7 +48,7 @@ def fetch_prs_cached(repos_tuple, username, token, include_stats, fetch_authored
 
             # Fetch authored PRs
             if fetch_authored:
-                authored_prs = fetcher.fetch_user_prs(owner, repo_name, username)
+                authored_prs = fetcher.fetch_user_prs(owner, repo_name, username, include_stats=include_stats)
                 if authored_prs:
                     formatted_authored = fetcher.format_pr_data(authored_prs, owner, repo_name, include_stats)
                     for pr in formatted_authored:
