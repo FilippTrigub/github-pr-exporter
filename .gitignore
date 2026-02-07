@@ -8,6 +8,7 @@ __pycache__/
 venv/
 ENV/
 env/
+.env
 
 # IDE
 .idea/
@@ -24,3 +25,6 @@ github_prs.pdf
 
 # UV
 uv.lock
+
+# Claude
+.claude
